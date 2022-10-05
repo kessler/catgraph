@@ -1,0 +1,37 @@
+{
+  "name": "catgraph",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "bin": {
+    "fdg": "fdg.js"
+  },
+  "scripts": {
+    "build": "npx webpack",
+    "build_dev": "env BUILD_MODE=development npx webpack"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kessler/catgraph.git"
+  },
+  "author": "Yaniv Kessler",
+  "license": "Apache-2",
+  "bugs": {
+    "url": "https://github.com/kessler/catgraph/issues"
+  },
+  "homepage": "https://github.com/kessler/catgraph#readme",
+  "devDependencies": {
+    "webpack": "^5.74.0",
+    "webpack-cli": "^4.10.0"
+  },
+  "dependencies": {
+    "debug": "^4.3.4",
+    "digital-chain": "^3.8.1",
+    "domready": "^1.0.8",
+    "force-graph": "^1.42.13",
+    "hcat": "^2.1.4",
+    "server-destroy": "^1.0.1",
+    "split": "^1.0.1",
+    "ws": "^8.9.0"
+  }
+}

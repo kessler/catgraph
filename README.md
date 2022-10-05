@@ -6,14 +6,14 @@ Pipe graph data to browser.
 
 ### simple example
 
-```
+```bash
 echo 1--2\n2--3\n2--4\n4--1\n5 | catgraph
 ```
 <img src="/screenshot1.png?raw=true" width="400">
 
 ### json helps with customization
 
-```
+```bash
 echo -e '{ "id": 1, "val": 5, "name": "a" }--{ "id": 2, "val": 3, "name": "b" }\n{ "id": 3, "val": 2, "name": "a" }' | catgraph
 ```
 <img src="/screenshot2.png?raw=true" width="400">

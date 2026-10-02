@@ -1,9 +1,11 @@
 import ForceGraph from 'force-graph'
+import { forceCollide } from 'd3-force-3d'
 import domReady from 'domready'
 
 // font sizes are in graph units, so text scales with zoom like the nodes do
 const NODE_LABEL_FONT_SIZE = 4
 const EDGE_LABEL_FONT_SIZE = 3
+const ELLIPSIS = '…'
 const REFERENCE_FONT_SIZE = 10
 // share of the node radius that text inside the node may use
 const NODE_TEXT_FILL = 0.75
@@ -11,6 +13,8 @@ const NODE_TEXT_FILL = 0.75
 const MIN_READABLE_PX = 5
 const PARALLEL_CURVATURE_STEP = 0.3
 const SELF_LOOP_CURVATURE_STEP = 0.3
+// minimum gap kept around each node, in graph units
+const COLLIDE_PADDING = 1
 
 domReady(main)
 
@@ -136,14 +140,16 @@ async function main() {
       .linkCurvature('curvature')
       .linkLabel(disableEdgeHover ? () => null : link => link.label === undefined ? null : textElement(link.label))
       .linkCanvasObjectMode(() => 'after')
-      .linkCanvasObject(drawLinkLabel)
+      .linkCanvasObject((link, ctx, globalScale) => drawLinkLabel(link, ctx, globalScale, mainGraph.nodeRelSize()))
+      // keep nodes from overlapping
+      .d3Force('collide', forceCollide(node => nodeRadius(node, mainGraph.nodeRelSize()) + COLLIDE_PADDING))
+      .width(window.innerWidth)
+      .height(window.innerHeight)
+
+    // force-graph takes the window size once, when it loads, which is 0x0 if the page loaded before its window had a size
+    window.addEventListener('resize', () => mainGraph.width(window.innerWidth).height(window.innerHeight))
 
     //mainGraph.onEngineStop(() => requestMore())
-  }
-
-  function nodeRadius(node) {
-    // same as force-graph's own node size
-    return Math.sqrt(Math.max(0, node.val || 1)) * mainGraph.nodeRelSize()
   }
 
   // largest text that fits inside the circle: the text box half diagonal must not exceed the padded radius
@@ -153,7 +159,7 @@ async function main() {
     ctx.save()
     ctx.font = `${REFERENCE_FONT_SIZE}px Sans-Serif`
     const widthPerFontPx = ctx.measureText(text).width / REFERENCE_FONT_SIZE
-    const fontSize = 2 * nodeRadius(node) * NODE_TEXT_FILL / Math.sqrt(widthPerFontPx ** 2 + 1)
+    const fontSize = 2 * nodeRadius(node, mainGraph.nodeRelSize()) * NODE_TEXT_FILL / Math.sqrt(widthPerFontPx ** 2 + 1)
 
     if (fontSize * globalScale >= MIN_READABLE_PX) {
       ctx.font = `${fontSize}px Sans-Serif`
@@ -174,7 +180,7 @@ async function main() {
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
     ctx.fillStyle = '#333'
-    ctx.fillText(nodeText(node), node.x, node.y + nodeRadius(node) + 1)
+    ctx.fillText(nodeText(node), node.x, node.y + nodeRadius(node, mainGraph.nodeRelSize()) + 1)
     ctx.restore()
   }
 
@@ -194,7 +200,7 @@ async function main() {
   }
 }
 
-function drawLinkLabel(link, ctx, globalScale) {
+function drawLinkLabel(link, ctx, globalScale, nodeRelSize) {
   if (link.label === undefined || EDGE_LABEL_FONT_SIZE * globalScale < MIN_READABLE_PX) return
 
   const { source, target } = link
@@ -210,15 +216,55 @@ function drawLinkLabel(link, ctx, globalScale) {
   ctx.translate(x, y)
   ctx.rotate(angle)
   ctx.font = `${EDGE_LABEL_FONT_SIZE}px Sans-Serif`
-  const width = ctx.measureText(link.label).width
   const padding = EDGE_LABEL_FONT_SIZE * 0.2
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
-  ctx.fillRect(-width / 2 - padding, -EDGE_LABEL_FONT_SIZE / 2 - padding, width + padding * 2, EDGE_LABEL_FONT_SIZE + padding * 2)
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.fillStyle = '#555'
-  ctx.fillText(link.label, 0, 0)
+  const text = fitText(ctx, link.label, labelSpace(source, target, nodeRelSize) - padding * 2)
+
+  if (text.length > 0) {
+    const width = ctx.measureText(text).width
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.8)'
+    ctx.fillRect(-width / 2 - padding, -EDGE_LABEL_FONT_SIZE / 2 - padding, width + padding * 2, EDGE_LABEL_FONT_SIZE + padding * 2)
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillStyle = '#555'
+    ctx.fillText(text, 0, 0)
+  }
+
   ctx.restore()
+}
+
+// room along the edge between the two node borders, self loops are not limited
+function labelSpace(source, target, nodeRelSize) {
+  if (source === target) return Infinity
+
+  const length = Math.hypot(target.x - source.x, target.y - source.y)
+  return length - nodeRadius(source, nodeRelSize) - nodeRadius(target, nodeRelSize)
+}
+
+// the text, or its longest prefix that fits with an ellipsis, or '' when not even the ellipsis fits
+function fitText(ctx, text, maxWidth) {
+  if (ctx.measureText(text).width <= maxWidth) return text
+  if (ctx.measureText(ELLIPSIS).width > maxWidth) return ''
+
+  let low = 0
+  let high = text.length - 1
+
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2)
+
+    if (ctx.measureText(text.slice(0, middle) + ELLIPSIS).width <= maxWidth) {
+      low = middle
+      continue
+    }
+
+    high = middle - 1
+  }
+
+  return text.slice(0, low).trimEnd() + ELLIPSIS
+}
+
+function nodeRadius(node, nodeRelSize) {
+  // same as force-graph's own node size
+  return Math.sqrt(Math.max(0, node.val || 1)) * nodeRelSize
 }
 
 // point at t = 0.5 of a straight line, quadratic curve (one control point) or cubic self loop (two)

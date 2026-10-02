@@ -15,12 +15,19 @@ const PARALLEL_CURVATURE_STEP = 0.3
 const SELF_LOOP_CURVATURE_STEP = 0.3
 // minimum gap kept around each node, in graph units
 const COLLIDE_PADDING = 1
+// stronger repulsion and longer links than d3's defaults (-30 and 30), so edges have room for labels
+const CHARGE_STRENGTH = -120
+const LINK_DISTANCE = 50
+// gap between a node and its outside text
+const NODE_LABEL_GAP = 1
 
 domReady(main)
 
 async function main() {
 
   const { nodeLabels, disableNodeHover, disableEdgeHover } = global.$$context
+  // edge labels keep clear of the text drawn under nodes
+  const nodeTextClearance = nodeLabels === 'outside' ? NODE_LABEL_FONT_SIZE + NODE_LABEL_GAP : 0
   const host = global.document.location.host
   const ws = new WebSocket('ws://' + host)
   // links between the same two nodes, in either direction, keyed by the unordered pair
@@ -140,11 +147,14 @@ async function main() {
       .linkCurvature('curvature')
       .linkLabel(disableEdgeHover ? () => null : link => link.label === undefined ? null : textElement(link.label))
       .linkCanvasObjectMode(() => 'after')
-      .linkCanvasObject((link, ctx, globalScale) => drawLinkLabel(link, ctx, globalScale, mainGraph.nodeRelSize()))
+      .linkCanvasObject((link, ctx, globalScale) => drawLinkLabel(link, ctx, globalScale, mainGraph.nodeRelSize(), nodeTextClearance))
       // keep nodes from overlapping
       .d3Force('collide', forceCollide(node => nodeRadius(node, mainGraph.nodeRelSize()) + COLLIDE_PADDING))
       .width(window.innerWidth)
       .height(window.innerHeight)
+
+    mainGraph.d3Force('charge').strength(CHARGE_STRENGTH)
+    mainGraph.d3Force('link').distance(LINK_DISTANCE)
 
     // force-graph takes the window size once, when it loads, which is 0x0 if the page loaded before its window had a size
     window.addEventListener('resize', () => mainGraph.width(window.innerWidth).height(window.innerHeight))
@@ -179,8 +189,15 @@ async function main() {
     ctx.font = `${NODE_LABEL_FONT_SIZE}px Sans-Serif`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'top'
+    const text = nodeText(node)
+    const y = node.y + nodeRadius(node, mainGraph.nodeRelSize()) + NODE_LABEL_GAP
+    // white outline keeps the text readable over edges and their labels
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)'
+    ctx.lineWidth = NODE_LABEL_FONT_SIZE * 0.25
+    ctx.lineJoin = 'round'
+    ctx.strokeText(text, node.x, y)
     ctx.fillStyle = '#333'
-    ctx.fillText(nodeText(node), node.x, node.y + nodeRadius(node, mainGraph.nodeRelSize()) + 1)
+    ctx.fillText(text, node.x, y)
     ctx.restore()
   }
 
@@ -200,7 +217,7 @@ async function main() {
   }
 }
 
-function drawLinkLabel(link, ctx, globalScale, nodeRelSize) {
+function drawLinkLabel(link, ctx, globalScale, nodeRelSize, nodeTextClearance) {
   if (link.label === undefined || EDGE_LABEL_FONT_SIZE * globalScale < MIN_READABLE_PX) return
 
   const { source, target } = link
@@ -217,7 +234,7 @@ function drawLinkLabel(link, ctx, globalScale, nodeRelSize) {
   ctx.rotate(angle)
   ctx.font = `${EDGE_LABEL_FONT_SIZE}px Sans-Serif`
   const padding = EDGE_LABEL_FONT_SIZE * 0.2
-  const text = fitText(ctx, link.label, labelSpace(source, target, nodeRelSize) - padding * 2)
+  const text = fitText(ctx, link.label, labelSpace(source, target, nodeRelSize, nodeTextClearance) - padding * 2)
 
   if (text.length > 0) {
     const width = ctx.measureText(text).width
@@ -232,12 +249,14 @@ function drawLinkLabel(link, ctx, globalScale, nodeRelSize) {
   ctx.restore()
 }
 
-// room along the edge between the two node borders, self loops are not limited
-function labelSpace(source, target, nodeRelSize) {
+// room for a label centred on the edge, clear of both nodes and their text, self loops are not limited
+function labelSpace(source, target, nodeRelSize, nodeTextClearance) {
   if (source === target) return Infinity
 
-  const length = Math.hypot(target.x - source.x, target.y - source.y)
-  return length - nodeRadius(source, nodeRelSize) - nodeRadius(target, nodeRelSize)
+  const halfLength = Math.hypot(target.x - source.x, target.y - source.y) / 2
+  // the label is centred, so the bigger end limits both halves
+  const biggerEnd = Math.max(nodeRadius(source, nodeRelSize), nodeRadius(target, nodeRelSize)) + nodeTextClearance
+  return 2 * (halfLength - biggerEnd)
 }
 
 // the text, or its longest prefix that fits with an ellipsis, or '' when not even the ellipsis fits

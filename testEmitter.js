@@ -16,7 +16,8 @@ for (let i = 0; i < 20; i++) {
 
 		if (random(1, 100) > 50) {
 			const b = random(1, 100)
-			s += `--{ "id": ${b}, "name": "${b}", "val": ${b % elementTypes} }`
+			const label = random(1, 100) > 50 ? `[${a}->${b}]--` : ''
+			s += `--${label}{ "id": ${b}, "name": "${b}", "val": ${b % elementTypes} }`
 		}
 	}
 

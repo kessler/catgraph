@@ -12,7 +12,14 @@ const debug = createDebug('catgraph')
 const BATCH_SIZE = 1000
 
 // historySize: how many sent lines to keep for replaying to a reconnecting page (e.g. on refresh)
-export default async function catgraph({ historySize = defaultConfig.historySize } = {}) {
+// nodeLabels: where node text is drawn, 'inside' or 'outside' the node
+// disableNodeHover / disableEdgeHover: turn off the hover tooltips
+export default async function catgraph({
+  historySize = defaultConfig.historySize,
+  nodeLabels = defaultConfig.nodeLabels,
+  disableNodeHover = defaultConfig.disableNodeHover,
+  disableEdgeHover = defaultConfig.disableEdgeHover
+} = {}) {
 
   const config = {}
 
@@ -22,7 +29,7 @@ export default async function catgraph({ historySize = defaultConfig.historySize
   config.serveOnce = false
 
   const state = {
-    server: hcat(await createClientPage({}), config),
+    server: hcat(await createClientPage({ nodeLabels, disableNodeHover, disableEdgeHover }), config),
     websocketConnected: false,
     buffer: new LinkedList(),
     history: new LinkedList(),
@@ -111,8 +118,9 @@ export default async function catgraph({ historySize = defaultConfig.historySize
     const transmitData = []
 
     while (state.buffer.length > 0 && transmitData.length < BATCH_SIZE) {
-      const { source, target } = state.buffer.shift()
-      transmitData.push({ source, target })
+      // label is undefined for unlabelled edges, which JSON leaves out of the payload
+      const { source, target, label } = state.buffer.shift()
+      transmitData.push({ source, target, label })
     }
 
     for (const entry of transmitData) {

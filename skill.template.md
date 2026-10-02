@@ -23,7 +23,7 @@ Don't use it for: numeric series (use catchart), static images to save to disk o
 ## How to invoke
 
 ```
-<producer> | catgraph [--historySize <n>]
+<producer> | catgraph [--historySize <n>] [--nodeLabels inside|outside] [--disableNodeHover] [--disableEdgeHover]
 ```
 
 Each input line is one of:
@@ -31,17 +31,20 @@ Each input line is one of:
 | Line | Meaning |
 |---|---|
 | `a--b` | an edge from node `a` to node `b` (drawn with an arrow, so direction matters) |
+| `a--[calls]--b` | the same edge, labelled `calls` |
 | `a` | a single node, with no edges |
 | `{"id":1,"name":"api","val":3}--{"id":2,"name":"db"}` | same, with JSON nodes for customization |
 
-Nodes are created the first time they appear; repeated edges are drawn once.
+Nodes are created the first time they appear; repeated edges are drawn once. An edge is identified by its source, target and label, so `a--[reads]--b` and `a--[writes]--b` are two edges, drawn curved so they don't overlap.
+
+Node text (the `name`, or the `id` without one) is drawn inside the node, or under it with `--nodeLabels outside`. Node text and edge labels appear once they are big enough to read at the current zoom, and always show on hover. `--disableNodeHover` / `--disableEdgeHover` turn the tooltips off.
 
 ### JSON nodes
 
 A side of the edge that parses as a JSON object with an `id` becomes a node with those properties:
 
 - `id` - identity (required; without it the whole text is treated as a plain id)
-- `name` - label shown on hover
+- `name` - node text, drawn on the node and shown on hover
 - `val` - node size, and nodes with the same `val` share a color. Use it to encode a category or weight.
 
 Generate JSON sides with `jq -c` / `tojson` so they stay on one line with no stray spaces.
@@ -51,6 +54,11 @@ Generate JSON sides with `jq -c` / `tojson` so they stay on one line with no str
 **Edges from a two-column CSV/TSV**
 ```
 awk -F, '{print $1 "--" $2}' edges.csv | catgraph
+```
+
+**Labelled edges from a three-column CSV (from, relation, to)**
+```
+awk -F, '{print $1 "--[" $2 "]--" $3}' relations.csv | catgraph
 ```
 
 **git commit ancestry (parent -> child)**
@@ -71,7 +79,7 @@ Both sides must come out as the same string for the same file (`a.js`, not `src/
 
 ## Things worth knowing
 
-**`--` is the separator, and nothing is trimmed.** `a -- b` creates nodes `"a "` and `" b"`, so write `a--b`. Only the first two parts are used (`a--b--c` becomes the edge `a--b`), and an id or a JSON value that contains `--` is split in the wrong place. If the data might contain `--`, replace it first (e.g. with `sed`).
+**`--` is the separator, and nothing is trimmed.** `a -- b` creates nodes `"a "` and `" b"`, so write `a--b`. Without a label only the first two parts are used (`a--b--c` becomes the edge `a--b`), and an id or a JSON value that contains `--` is split in the wrong place. If the data might contain `--`, replace it first (e.g. with `sed`). A label is everything between the first `--[` and the last `]--`, so the label itself may contain `--` or `]`; an empty label (`a--[]--b`) is no label.
 
 **Ids are compared exactly.** The plain line `1--2` creates string ids `"1"` and `"2"`, while the JSON `{"id":1}` has the number `1`, so they are different nodes. Pick one form for the whole input.
 
@@ -81,7 +89,7 @@ Both sides must come out as the same string for the same file (`a.js`, not `src/
 
 **Refreshing works only while input is still flowing.** A refreshed page gets the most recent lines replayed, up to `--historySize` (default 1,000,000). Once stdin has closed and the server has shut down, a refresh finds nothing - the original tab keeps showing the graph.
 
-**Config.** Options can also be set in a `.catgraphrc` file (JSON, e.g. `{ "historySize": 5000 }`) or `catgraph_historySize`, via the rc module.
+**Config.** Options can also be set in a `.catgraphrc` file (JSON, e.g. `{ "historySize": 5000, "nodeLabels": "outside" }`) or env vars like `catgraph_historySize`, via the rc module.
 
 **Big graphs.** Everything is drawn in the browser, and very large graphs get slow to lay out. For huge inputs, filter or aggregate in the pipeline first (e.g. `sort -u`, `head`, dropping leaf nodes) rather than piping everything.
 

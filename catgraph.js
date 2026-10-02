@@ -3,10 +3,16 @@
 import { pipeline } from 'node:stream/promises'
 import catgraph from './index.js'
 import installSkill from './installSkill.js'
-import program, { installSkillCommand, validateHistorySize } from './program.js'
+import parser from './parser.js'
+import program, { installSkillCommand, validateBoolean, validateHistorySize, validateNodeLabels } from './program.js'
 
 program.action(async options => {
-  const catgraphStream = await catgraph({ historySize: validateHistorySize(options.historySize) })
+  const catgraphStream = await catgraph({
+    historySize: validateHistorySize(options.historySize),
+    nodeLabels: validateNodeLabels(options.nodeLabels),
+    disableNodeHover: validateBoolean('disableNodeHover', options.disableNodeHover),
+    disableEdgeHover: validateBoolean('disableEdgeHover', options.disableEdgeHover)
+  })
   process.stdin.setEncoding('utf8')
   await pipeline(process.stdin, lines(), parser(), catgraphStream())
 })
@@ -27,15 +33,6 @@ function lines() {
 
     if (remainder.length > 0) {
       yield remainder
-    }
-  }
-}
-
-function parser() {
-  return async function*(stream) {
-    for await (const line of stream) {
-      const [source, target] = line.split('--')
-      yield { source, target }
     }
   }
 }

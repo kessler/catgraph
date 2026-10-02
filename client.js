@@ -61,6 +61,7 @@ async function main() {
         const linkId = `${sourceNode.id}=>${targetNode.id}`
         if (!linkIndex.has(linkId)) {
           newLinks.push({ source: sourceNode.id, target: targetNode.id })
+          linkIndex.add(linkId)
         }
       }
     }

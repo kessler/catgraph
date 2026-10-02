@@ -1,34 +1,26 @@
-module.exports = {
-	jsonParse,
-	jsonStringify,
-	prettyJsonStringify,
-	serialize,
-	deserialize
+export function jsonParse() {
+  return async function*(stream) {
+    for await (const chunk of stream) {
+      if (chunk.length === 0) continue
+      yield deserialize(chunk)
+    }
+  }
 }
 
-function jsonParse() {
-	return async function*(stream) {
-		for await (const chunk of stream) {
-			if (chunk.length === 0) continue
-			yield deserialize(chunk)
-		}
-	}
+export function jsonStringify() {
+  return async function*(stream) {
+    for await (const frame of stream) {
+      yield `${serialize(frame)}\n`
+    }
+  }
 }
 
-function jsonStringify() {
-	return async function*(stream) {
-		for await (const frame of stream) {
-			yield `${serialize(frame)}\n`
-		}
-	}
-}
-
-function prettyJsonStringify() {
-	return async function*(stream) {
-		for await (const frame of stream) {
-			yield `${serialize(frame, null, '\t')}\n`
-		}
-	}
+export function prettyJsonStringify() {
+  return async function*(stream) {
+    for await (const frame of stream) {
+      yield `${serialize(frame, null, '\t')}\n`
+    }
+  }
 }
 
 /**
@@ -39,7 +31,7 @@ function prettyJsonStringify() {
  * also reporting errors when they happen really helps with debugging
  * also, need to take care of big ints, see: https://dev.to/benlesh/bigint-and-json-stringify-json-parse-2m8p
  */
-function serialize (object, _, spacer) {
+export function serialize(object, _, spacer) {
   try {
     return JSON.stringify(object, serializeBigInt, spacer)
   } catch (e) {
@@ -49,11 +41,11 @@ function serialize (object, _, spacer) {
   }
 }
 
-function serializeBigInt (key, value) {
+function serializeBigInt(key, value) {
   return typeof value === 'bigint' ? `BIGINT::${value}` : value
 }
 
-function deserialize (text) {
+export function deserialize(text) {
   try {
     return JSON.parse(text, deserializeBigInt)
   } catch (e) {
@@ -63,9 +55,9 @@ function deserialize (text) {
   }
 }
 
-function deserializeBigInt (key, value) {
+function deserializeBigInt(key, value) {
   if (typeof value === 'string' && value.startsWith('BIGINT::')) {
-    return BigInt(value.substr(8))
+    return BigInt(value.slice(8))
   }
 
   return value

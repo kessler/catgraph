@@ -2,9 +2,13 @@
   "name": "catgraph",
   "version": "1.0.0",
   "description": "",
+  "type": "module",
   "main": "index.js",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "bin": {
-    "fdg": "fdg.js"
+    "catgraph": "catgraph.js"
   },
   "scripts": {
     "build": "npx webpack",
@@ -25,13 +29,14 @@
     "webpack-cli": "^4.10.0"
   },
   "dependencies": {
+    "commander": "^15.0.0",
     "debug": "^4.3.4",
     "digital-chain": "^3.8.1",
     "domready": "^1.0.8",
     "force-graph": "^1.42.13",
-    "hcat": "^2.1.4",
+    "hcat": "^2.2.3",
+    "rc": "^1.2.8",
     "server-destroy": "^1.0.1",
-    "split": "^1.0.1",
     "ws": "^8.9.0"
   }
 }

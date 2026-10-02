@@ -1,18 +1,35 @@
 #!/usr/bin/env node
 
-const json = require('./json')
-const fdg = require('./index')
-const split = require('split')
-const { pipeline } = require('stream/promises')
+import { pipeline } from 'node:stream/promises'
+import catgraph from './index.js'
+import installSkill from './installSkill.js'
+import program, { installSkillCommand, validateHistorySize } from './program.js'
 
-// const program = require('./program')
+program.action(async options => {
+  const catgraphStream = await catgraph({ historySize: validateHistorySize(options.historySize) })
+  process.stdin.setEncoding('utf8')
+  await pipeline(process.stdin, lines(), parser(), catgraphStream())
+})
 
-async function main() {
-  const fdgStream = await fdg( /*program*/ )
-  await pipeline(process.stdin, split(), parser(), fdgStream())
+installSkillCommand.action(installSkill)
+
+await program.parseAsync()
+
+function lines() {
+  return async function*(stream) {
+    let remainder = ''
+
+    for await (const chunk of stream) {
+      const parts = (remainder + chunk).split(/\r?\n/)
+      remainder = parts.pop()
+      yield* parts.filter(line => line.length > 0)
+    }
+
+    if (remainder.length > 0) {
+      yield remainder
+    }
+  }
 }
-
-main()
 
 function parser() {
   return async function*(stream) {

@@ -1,13 +1,18 @@
-const fs = require('fs/promises')
-const path = require('path')
-const hcat = require('hcat')
-const WebSocket = require('ws')
-const enableDestroy = require('server-destroy')
-const LinkedList = require('digital-chain')
-const debug = require('debug')('catgraph')
-const json = require('./json')
+import fs from 'node:fs/promises'
+import path from 'node:path'
+import hcat from 'hcat'
+import { WebSocketServer } from 'ws'
+import enableDestroy from 'server-destroy'
+import LinkedList from 'digital-chain'
+import createDebug from 'debug'
+import * as json from './json.js'
+import defaultConfig from './config.js'
 
-module.exports = async () => {
+const debug = createDebug('catgraph')
+const BATCH_SIZE = 1000
+
+// historySize: how many sent lines to keep for replaying to a reconnecting page (e.g. on refresh)
+export default async function catgraph({ historySize = defaultConfig.historySize } = {}) {
 
   const config = {}
 
@@ -20,13 +25,18 @@ module.exports = async () => {
     server: hcat(await createClientPage({}), config),
     websocketConnected: false,
     buffer: new LinkedList(),
+    history: new LinkedList(),
+    // a transmit request that arrived while the buffer was empty
+    pendingSend: undefined,
+    inputDone: false,
+    shutdownScheduled: false,
     done: false
   }
 
   debug('initial state created')
 
   enableDestroy(state.server)
-  state.wss = new WebSocket.Server({ server: state.server })
+  state.wss = new WebSocketServer({ server: state.server })
   state.wss.on('connection', onIncomingConnection)
   debug('wss created')
 
@@ -35,8 +45,13 @@ module.exports = async () => {
   async function* inputStream(stream) {
     for await (const entry of stream) {
       state.buffer.push(entry)
+
+      if (state.pendingSend) {
+        transmit(state.pendingSend)
+      }
     }
 
+    state.inputDone = true
     maybeShutdown()
   }
 
@@ -44,10 +59,14 @@ module.exports = async () => {
     debug('incoming connection')
 
     if (state.websocketConnected) {
-      return ws.close(-1, 'too many connections')
+      return ws.close(1013, 'too many connections')
     }
 
     state.websocketConnected = true
+
+    // everything a previous page already received, sent before any new data
+    const replay = Array.from(state.history.values())
+    let replayIndex = 0
 
     ws.on('error', err => {
       console.error('websocket error', err)
@@ -56,16 +75,29 @@ module.exports = async () => {
     ws.on('close', () => {
       debug('closing connection')
       state.websocketConnected = false
+      state.pendingSend = undefined
     })
 
     ws.on('message', message => {
       const { command } = json.deserialize(message)
-      
+
       debug('command message', command)
 
-      if (command && command === 'transmit' && state.buffer.length > 0 && !state.done) {
-        transmit(send)
+      if (command !== 'transmit' || state.done) return
+
+      if (replayIndex < replay.length) {
+        const payload = replay.slice(replayIndex, replayIndex + BATCH_SIZE)
+        replayIndex += payload.length
+        send({ command: 'updateGraph', payload })
+        return
       }
+
+      if (state.buffer.length === 0) {
+        state.pendingSend = send
+        return
+      }
+
+      transmit(send)
     })
 
     function send(data) {
@@ -75,13 +107,21 @@ module.exports = async () => {
   }
 
   function transmit(send) {
+    state.pendingSend = undefined
     const transmitData = []
 
-    while (state.buffer.length > 0 && transmitData.length < 1000) {
+    while (state.buffer.length > 0 && transmitData.length < BATCH_SIZE) {
       const { source, target } = state.buffer.shift()
       transmitData.push({ source, target })
     }
 
+    for (const entry of transmitData) {
+      state.history.push(entry)
+    }
+
+    while (state.history.length > historySize) {
+      state.history.shift()
+    }
 
     if (transmitData.length > 0) {
       send({ command: 'updateGraph', payload: transmitData })
@@ -91,7 +131,8 @@ module.exports = async () => {
   }
 
   function maybeShutdown() {
-    if (state.server && state.buffer.length === 0) {
+    if (state.inputDone && state.buffer.length === 0 && !state.shutdownScheduled) {
+      state.shutdownScheduled = true
       setTimeout(() => {
         console.log('shutting down server...')
         state.done = true
@@ -105,7 +146,7 @@ module.exports = async () => {
 
 async function createClientPage(clientContext) {
 
-  const client = await fs.readFile(path.join(__dirname, 'dist', 'client.js'), 'utf8')
+  const client = await fs.readFile(path.join(import.meta.dirname, 'dist', 'client.js'), 'utf8')
   const clientHtml = `
   <!DOCTYPE html>
   <html lang="en">

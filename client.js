@@ -139,6 +139,8 @@ async function main() {
       //.linkDirectionalParticles(2)
       //.linkHoverPrecision(10)
       .linkDirectionalArrowLength(2)
+      // tip at the target node, the middle of the edge is taken by its label
+      .linkDirectionalArrowRelPos(1)
       .graphData(data)
       .nodeAutoColorBy('val')
       .nodeLabel(disableNodeHover ? () => null : node => textElement(nodeText(node)))
